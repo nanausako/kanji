@@ -1,0 +1,9 @@
+Kanji stroke data in data/kanji-data.js (fields "strokes" and "medians") and
+the source SVGs in tools/kanjivg-src/ are derived from KanjiVG.
+
+KanjiVG is copyright (c) 2009-2024 Ulrich Apel and released under the
+Creative Commons Attribution-ShareAlike 3.0 license (CC BY-SA 3.0):
+https://creativecommons.org/licenses/by-sa/3.0/
+
+As a derivative work, this stroke data is likewise distributed under
+CC BY-SA 3.0. Attribution: KanjiVG, Ulrich Apel, https://kanjivg.tagaini.net/
