@@ -1,0 +1,83 @@
+:root { --pad: 320px; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+  color: #333;
+  background: #f4f7f6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+.app {
+  background: #fff;
+  margin: 16px;
+  padding: 16px 20px 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-width: 520px;
+  width: 100%;
+  text-align: center;
+}
+.progress { color: #888; font-size: 15px; }
+.sentence { font-size: 24px; line-height: 1.6; margin: 12px 0 16px; }
+.sentence ruby rt { font-size: 11px; color: #666; }
+.sentence .blank {
+  color: #e91e63;
+  font-weight: bold;
+  border-bottom: 3px solid #e91e63;
+  padding: 0 4px;
+}
+.pad {
+  position: relative;
+  width: var(--pad);
+  height: var(--pad);
+  margin: 0 auto 12px;
+  border: 3px dashed #ccc;
+  border-radius: 8px;
+  background: #fafafa;
+  touch-action: none;
+}
+.pad .model, .pad .ink, .pad .guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.pad .guide::before, .pad .guide::after {
+  content: "";
+  position: absolute;
+  background: #eee;
+}
+.pad .guide::before { left: 50%; top: 0; width: 2px; height: 100%; }
+.pad .guide::after { top: 50%; left: 0; height: 2px; width: 100%; }
+.pad .ink { touch-action: none; z-index: 2; }
+.pad .model { z-index: 1; }
+.message { min-height: 26px; font-size: 18px; font-weight: bold; color: #e91e63; }
+.message.ok { color: #4caf50; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.controls button {
+  border: none;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 16px;
+  background: #2196f3;
+  color: #fff;
+  cursor: pointer;
+}
+.controls button.primary { background: #4caf50; }
+.controls button:active { filter: brightness(0.9); }
+#btn-again {
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 16px;
+  background: #4caf50;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 12px;
+}
+.credit { color: #999; font-size: 12px; margin: 8px 16px 24px; text-align: center; }
+.credit a { color: #999; }
+@media (min-width: 700px) { :root { --pad: 380px; } }

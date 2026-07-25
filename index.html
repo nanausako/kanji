@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>漢字ドリル</title>
+  <!-- PWA: home-screen install + standalone (§3.4). Referenced files created in Task 10.5. -->
+  <meta name="theme-color" content="#4caf50" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="漢字ドリル" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="app">
+    <div class="progress" id="progress">問題 1 / 10</div>
+    <p class="sentence" id="sentence">よみこみ中…</p>
+
+    <div class="pad" id="pad">
+      <svg class="model" id="model" aria-hidden="true"></svg>
+      <canvas class="ink" id="ink"></canvas>
+      <div class="guide" aria-hidden="true"></div>
+    </div>
+
+    <p class="message" id="message">&nbsp;</p>
+
+    <div class="controls">
+      <button type="button" id="btn-model">おてほん</button>
+      <button type="button" id="btn-clear">やりなおす</button>
+      <button type="button" id="btn-check">こたえあわせ</button>
+      <button type="button" id="btn-skip" hidden>とばす</button>
+      <button type="button" id="btn-next" class="primary" hidden>つぎへ</button>
+    </div>
+
+    <button type="button" id="btn-again" class="primary" hidden>もういっかい</button>
+  </main>
+
+  <footer class="credit">
+    書き順データ: <a href="https://kanjivg.tagaini.net/" target="_blank" rel="noopener">KanjiVG</a>
+    (Ulrich Apel) / CC BY-SA 3.0
+  </footer>
+
+  <script type="module">
+    import { initApp } from './src/app.js';
+    initApp();
+  </script>
+  <script>
+    // Register the Service Worker for offline use (§3.4). File created in Task 10.5.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
