@@ -15,6 +15,11 @@ export function validateList(list) {
     for (const key of REQUIRED) {
       if (e[key] === undefined || e[key] === null) errors.push(`${where}: missing "${key}"`);
     }
+    for (const key of ['id', 'kanji', 'reading', 'sentence']) {
+      if (e[key] !== undefined && e[key] !== null && typeof e[key] !== 'string') {
+        errors.push(`${where}: "${key}" must be a string`);
+      }
+    }
     if (typeof e.kanji === 'string' && [...e.kanji].length !== 1) {
       errors.push(`${where}: kanji must be exactly one character`);
     }
