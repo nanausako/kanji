@@ -43,3 +43,7 @@ test('rubyToHtml renders and escapes', () => {
     '<ruby>机<rt>つくえ</rt></ruby>の〇'
   );
 });
+
+test('a malformed 《 with no closing 》 is treated as literal text', () => {
+  assert.deepEqual(parseRuby('本《ほん'), [{ t: 'text', v: '本《ほん' }]);
+});
