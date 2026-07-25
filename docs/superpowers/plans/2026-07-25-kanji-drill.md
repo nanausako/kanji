@@ -30,6 +30,10 @@
 kanji/
 ├── index.html                 # 画面（ES モジュールを読み込むだけ）
 ├── style.css                  # レイアウト・スタイル
+├── manifest.json              # PWA マニフェスト（ホーム画面追加）
+├── sw.js                      # cache-first Service Worker（オフライン）
+├── icon.svg                   # PWA / apple-touch アイコン
+├── .nojekyll                  # GitHub Pages で Jekyll 処理を無効化
 ├── src/
 │   ├── ruby.js                # 例文ルビ記法 → <ruby> 変換（純粋）
 │   ├── select.js              # 出題字の重複なしランダム抽出（純粋）
@@ -456,8 +460,6 @@ Expected: FAIL（`Cannot find module '../tools/validate-list.mjs'`）
 `tools/validate-list.mjs`:
 
 ```javascript
-import { parseRuby } from '../src/ruby.js';
-
 const REQUIRED = ['id', 'kanji', 'grade', 'reading', 'strokeCount', 'sentence'];
 
 // Codepoint of a single-character string as 5-digit lowercase hex.
@@ -493,11 +495,10 @@ export function validateList(list) {
       }
     }
     if (typeof e.sentence === 'string') {
-      // ruby notation must be well-formed (parse must not throw and 《 must be balanced)
+      // ruby notation must be well-formed: 《 and 》 balanced.
       const opens = (e.sentence.match(/《/g) || []).length;
       const closes = (e.sentence.match(/》/g) || []).length;
       if (opens !== closes) errors.push(`${where}: unbalanced 《》 in sentence`);
-      parseRuby(e.sentence); // smoke: must not throw
     }
   }
   return { ok: errors.length === 0, errors };
@@ -507,7 +508,7 @@ export function validateList(list) {
 - [ ] **Step 5: テストが通ることを確認**
 
 Run: `node --test test/validate-list.test.mjs`
-Expected: PASS（4 tests pass）
+Expected: PASS（5 tests pass）
 
 - [ ] **Step 6: Commit**
 
@@ -851,9 +852,10 @@ git commit -m "feat: 出題字の重複なしランダム抽出を追加"
 - Test: `test/judge.test.mjs`
 
 **Interfaces:**
+- Consumes: `KANJI_DATA` from `data/kanji-data.js`（実データ識別テスト用。Task 5 完了済み前提）
 - Produces:
   - `resample(points: number[][], n: number): number[][]` — 弧長等間隔の n 点
-  - `matchStroke(drawn: number[][], median: number[][], opts?): { ok: boolean, reason: 'ok'|'order'|'direction'|'shape' }` — drawn/median はいずれも 109 座標系の `[x,y]` 列
+  - `matchStroke(drawn: number[][], medians: number[][][], expectedIndex: number, opts?): { ok: boolean, reason: 'ok'|'order'|'direction'|'shape' }` — drawn は 109 座標系の `[x,y]` 列、medians は当該字の**全画**の median 配列
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -863,9 +865,13 @@ git commit -m "feat: 出題字の重複なしランダム抽出を追加"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resample, matchStroke } from '../src/judge.js';
+import { KANJI_DATA } from '../data/kanji-data.js';
 
-// A horizontal reference stroke (like 一) in 109-space, 8 points.
-const H = Array.from({ length: 8 }, (_, i) => [10 + i * 12, 55]);
+// Two parallel horizontal strokes only 18 apart in y (a hard, adjacent case,
+// like the stacked horizontals of 音/雨). 8 points each, 109-space.
+const top = Array.from({ length: 8 }, (_, i) => [10 + i * 12, 40]);
+const bottom = Array.from({ length: 8 }, (_, i) => [10 + i * 12, 58]);
+const MED = [top, bottom];
 
 test('resample returns n points spanning the same endpoints', () => {
   const r = resample([[0, 0], [10, 0], [10, 10]], 5);
@@ -874,23 +880,48 @@ test('resample returns n points spanning the same endpoints', () => {
   assert.deepEqual(r[4], [10, 10]);
 });
 
-test('a faithful stroke matches (ok)', () => {
-  const drawn = H.map(([x, y]) => [x + 3, y - 2]); // small jitter
-  assert.deepEqual(matchStroke(drawn, H), { ok: true, reason: 'ok' });
+test('resample does not crash on a zero-length (still-pen) stroke', () => {
+  const r = resample([[20, 20], [20, 20]], 8);
+  assert.equal(r.length, 8);
+  assert.ok(r.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y)));
+});
+
+test('a faithful stroke matches the expected index (ok)', () => {
+  const drawn = top.map(([x, y]) => [x + 3, y - 2]); // small jitter
+  assert.deepEqual(matchStroke(drawn, MED, 0), { ok: true, reason: 'ok' });
+});
+
+test('drawing an adjacent stroke of the same character is an order error', () => {
+  // Expected the top stroke (index 0) but drew the bottom one (only 18 away).
+  assert.equal(matchStroke(bottom, MED, 0).reason, 'order');
 });
 
 test('a reversed stroke is flagged as direction', () => {
-  const drawn = H.slice().reverse();
-  assert.equal(matchStroke(drawn, H).reason, 'direction');
+  const drawn = top.slice().reverse();
+  assert.equal(matchStroke(drawn, MED, 0).reason, 'direction');
 });
 
-test('a stroke starting far from the expected start is not ok', () => {
-  const drawn = H.map(([x, y]) => [x, y + 45]); // shifted far down
-  assert.equal(matchStroke(drawn, H).ok, false);
+test('a dot far from every stroke is not ok', () => {
+  assert.equal(matchStroke([[100, 5], [101, 6]], MED, 0).ok, false);
 });
 
 test('too few points is not ok', () => {
-  assert.equal(matchStroke([[10, 55]], H).ok, false);
+  assert.equal(matchStroke([[10, 40]], MED, 0).ok, false);
+});
+
+test('a still pen (zero-length stroke) is not ok and does not crash', () => {
+  assert.equal(matchStroke([[10, 40], [10, 40]], MED, 0).ok, false);
+});
+
+test('real data: an earlier stroke expected but a later stroke drawn is rejected', () => {
+  const oto = KANJI_DATA.find((k) => k.kanji === '音');
+  assert.ok(oto, '音 must be present in generated data');
+  // Drawing stroke index 4 while index 1 is expected must be an order error…
+  const res = matchStroke(oto.medians[4], oto.medians, 1);
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'order');
+  // …and drawing the exact expected stroke must pass.
+  assert.equal(matchStroke(oto.medians[1], oto.medians, 1).ok, true);
 });
 ```
 
@@ -905,7 +936,10 @@ Expected: FAIL（`Cannot find module '../src/judge.js'`）
 
 ```javascript
 // Stroke-order matcher in the 109x109 KanjiVG coordinate space.
-// Lenient thresholds tuned for young children; refine on device (§4.3).
+// A drawn stroke is compared against ALL strokes of the character and must be
+// nearest to the EXPECTED one. This distinguishes adjacent strokes (e.g. the
+// stacked horizontals of 音/雨) that a loose absolute threshold would let pass.
+// Thresholds are lenient for messy young handwriting; refine on device (§4.3).
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -916,13 +950,15 @@ export function resample(points, n) {
 
   const cum = [0];
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + dist(points[i - 1], points[i]));
-  const total = cum[cum.length - 1] || 1;
+  const total = cum[cum.length - 1];
+  if (total === 0) return Array.from({ length: n }, () => points[0].slice()); // still pen
 
   const out = [];
   for (let k = 0; k < n; k++) {
     const target = (total * k) / (n - 1);
     let i = 1;
     while (i < points.length && cum[i] < target) i++;
+    i = Math.min(i, points.length - 1); // clamp: never index past the last point
     const seg = cum[i] - cum[i - 1] || 1;
     const t = (target - cum[i - 1]) / seg;
     out.push([
@@ -939,21 +975,28 @@ function avgDist(a, b) {
   return sum / a.length;
 }
 
-export function matchStroke(drawn, median, opts = {}) {
-  const { startTol = 30, endTol = 30, shapeTol = 28 } = opts;
+// medians: ALL strokes of the character. expectedIndex: which one should be next.
+export function matchStroke(drawn, medians, expectedIndex, opts = {}) {
+  const { shapeTol = 20 } = opts;
   if (!drawn || drawn.length < 2) return { ok: false, reason: 'shape' };
 
-  const n = median.length;
+  const n = medians[expectedIndex].length;
   const r = resample(drawn, n);
 
-  const fwd = avgDist(r, median);
-  const rev = avgDist(r, median.slice().reverse());
-  if (rev + 8 < fwd && rev < shapeTol + 10) return { ok: false, reason: 'direction' };
-
-  if (dist(r[0], median[0]) > startTol || dist(r[n - 1], median[n - 1]) > endTol) {
-    return { ok: false, reason: 'order' };
+  // Nearest stroke over the whole character (pointwise avg captures position + shape).
+  let best = { idx: -1, score: Infinity, reversed: false };
+  for (let i = 0; i < medians.length; i++) {
+    const m = medians[i];
+    const fwd = avgDist(r, m);
+    const rev = avgDist(r, m.slice().reverse());
+    const score = Math.min(fwd, rev);
+    if (score < best.score) best = { idx: i, score, reversed: rev < fwd };
   }
-  if (fwd > shapeTol) return { ok: false, reason: 'shape' };
+
+  if (best.score > shapeTol * 2) return { ok: false, reason: 'shape' }; // nothing close
+  if (best.idx !== expectedIndex) return { ok: false, reason: 'order' };
+  if (best.reversed) return { ok: false, reason: 'direction' };
+  if (best.score > shapeTol) return { ok: false, reason: 'shape' };
   return { ok: true, reason: 'ok' };
 }
 ```
@@ -961,7 +1004,7 @@ export function matchStroke(drawn, median, opts = {}) {
 - [ ] **Step 4: テストが通ることを確認**
 
 Run: `node --test test/judge.test.mjs`
-Expected: PASS（5 tests pass）
+Expected: PASS（9 tests pass）。特に `real data: ...` が緑になることで、実 medians で書き順の別画が reject されることを確認。緑にならなければ `shapeTol` を下げて調整する（§4.3）。
 
 - [ ] **Step 5: Commit**
 
@@ -1027,28 +1070,38 @@ export function shouldIgnore(pointerType, penSeen) {
 }
 
 // Captures the child's raw ink on a transparent canvas overlay, preserving
-// stops/hooks/sweeps (止めはねはらい). Reports each completed stroke as a
-// polyline in the 109x109 KanjiVG coordinate space.
+// stops/hooks/sweeps (止めはねはらい). Points are stored in the 109x109 KanjiVG
+// coordinate space; each completed stroke is reported to onStroke in that space.
 export class InkPad {
   constructor(canvasEl, { size = 109 } = {}) {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
-    this.size = size; // logical square size in CSS px
+    this.size = size; // logical coordinate size (matches KanjiVG 109 space), NOT CSS px
     this.onStroke = () => {};
     this.penSeen = false;
-    this.strokes = []; // array of strokes; each stroke is array of [xCss, yCss]
+    this.strokes = []; // each stroke: array of [x, y] in 109-space
     this.drawing = null;
-
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
-    this.ctx.strokeStyle = '#222';
-    this.ctx.lineWidth = 6;
 
     canvasEl.style.touchAction = 'none';
     canvasEl.addEventListener('pointerdown', (e) => this._down(e));
     canvasEl.addEventListener('pointermove', (e) => this._move(e));
     canvasEl.addEventListener('pointerup', (e) => this._up(e));
     canvasEl.addEventListener('pointercancel', (e) => this._up(e));
+
+    this._fit();
+    if (typeof window !== 'undefined') window.addEventListener('resize', () => this._fit());
+  }
+
+  // Size the backing store to display size × devicePixelRatio for crisp ink
+  // (iPad DPR is 2–3; a fixed backing store would look blurry).
+  _fit() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    if (rect.width > 0 && rect.height > 0) {
+      this.canvas.width = Math.round(rect.width * dpr);
+      this.canvas.height = Math.round(rect.height * dpr);
+    }
+    this._render();
   }
 
   _pos(e) {
@@ -1063,7 +1116,8 @@ export class InkPad {
     if (e.pointerType === 'pen') this.penSeen = true;
     if (shouldIgnore(e.pointerType, this.penSeen)) return;
     e.preventDefault();
-    this.canvas.setPointerCapture?.(e.pointerId);
+    // Synthetic (test) or inactive pointers throw InvalidPointerId; ignore.
+    try { this.canvas.setPointerCapture(e.pointerId); } catch { /* non-fatal */ }
     this.drawing = { id: e.pointerId, pts: [this._pos(e)] };
     this._render();
   }
@@ -1082,8 +1136,7 @@ export class InkPad {
     this.drawing = null;
     if (stroke.length >= 2) {
       this.strokes.push(stroke);
-      const scale = 109 / this.size;
-      this.onStroke(stroke.map(([x, y]) => [x * scale, y * scale]));
+      this.onStroke(stroke.map(([x, y]) => [x, y]));
     }
     this._render();
   }
@@ -1105,8 +1158,13 @@ export class InkPad {
 
   _render() {
     const c = this.ctx;
+    // Setting canvas.width in _fit() resets context state, so (re)apply it here.
     c.clearRect(0, 0, this.canvas.width, this.canvas.height);
     const px = this.canvas.width / this.size;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.strokeStyle = '#222';
+    c.lineWidth = 2.4 * px; // ~constant visual width regardless of DPR
     const drawStroke = (pts) => {
       c.beginPath();
       c.moveTo(pts[0][0] * px, pts[0][1] * px);
@@ -1193,8 +1251,10 @@ export class Overlay {
     for (const d of this.char.strokes) this._pathEl(d, { opacity: 0.35 });
   }
 
-  // Faint single stroke as a next-stroke hint.
+  // Faint single stroke as a next-stroke hint. Clears first so repeated calls
+  // never stack opacity into a fully-visible answer.
   hint(index) {
+    this.clear();
     const d = this.char.strokes[index];
     if (d) this._pathEl(d, { opacity: 0.3, color: '#2196f3' });
   }
@@ -1251,6 +1311,13 @@ git commit -m "feat: お手本アニメーションと重ね表示を追加"
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>漢字ドリル</title>
+  <!-- PWA: home-screen install + standalone (§3.4). Referenced files created in Task 10.5. -->
+  <meta name="theme-color" content="#4caf50" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="漢字ドリル" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -1260,7 +1327,7 @@ git commit -m "feat: お手本アニメーションと重ね表示を追加"
 
     <div class="pad" id="pad">
       <svg class="model" id="model" aria-hidden="true"></svg>
-      <canvas class="ink" id="ink" width="600" height="600"></canvas>
+      <canvas class="ink" id="ink"></canvas>
       <div class="guide" aria-hidden="true"></div>
     </div>
 
@@ -1270,8 +1337,11 @@ git commit -m "feat: お手本アニメーションと重ね表示を追加"
       <button type="button" id="btn-model">おてほん</button>
       <button type="button" id="btn-clear">やりなおす</button>
       <button type="button" id="btn-check">こたえあわせ</button>
+      <button type="button" id="btn-skip" hidden>とばす</button>
       <button type="button" id="btn-next" class="primary" hidden>つぎへ</button>
     </div>
+
+    <button type="button" id="btn-again" class="primary" hidden>もういっかい</button>
   </main>
 
   <footer class="credit">
@@ -1282,6 +1352,12 @@ git commit -m "feat: お手本アニメーションと重ね表示を追加"
   <script type="module">
     import { initApp } from './src/app.js';
     initApp();
+  </script>
+  <script>
+    // Register the Service Worker for offline use (§3.4). File created in Task 10.5.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
   </script>
 </body>
 </html>
@@ -1360,6 +1436,16 @@ body {
 }
 .controls button.primary { background: #4caf50; }
 .controls button:active { filter: brightness(0.9); }
+#btn-again {
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 16px;
+  background: #4caf50;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 12px;
+}
 .credit { color: #999; font-size: 12px; margin: 8px 16px 24px; text-align: center; }
 .credit a { color: #999; }
 @media (min-width: 700px) { :root { --pad: 380px; } }
@@ -1377,6 +1463,7 @@ import { Overlay } from './overlay.js';
 
 const QUESTION_COUNT = 10;
 const HINT_AFTER_MISSES = 2;
+const SKIP_AFTER_MISSES = 3; // after this many misses, offer とばす (§5 no-pressure)
 
 export function initApp() {
   const el = (id) => document.getElementById(id);
@@ -1389,7 +1476,9 @@ export function initApp() {
     btnModel: el('btn-model'),
     btnClear: el('btn-clear'),
     btnCheck: el('btn-check'),
+    btnSkip: el('btn-skip'),
     btnNext: el('btn-next'),
+    btnAgain: el('btn-again'),
   };
 
   // Only kanji with valid stroke data can be asked. Warn about excluded ones (§6).
@@ -1424,6 +1513,7 @@ export function initApp() {
     renderSentence(entry);
     setMessage('', false);
     dom.btnNext.hidden = true;
+    dom.btnSkip.hidden = true;
     overlay.setCharacter(entry);
     ink.clear();
   }
@@ -1437,8 +1527,7 @@ export function initApp() {
     if (state.done) return;
     const entry = questions[state.index];
     if (state.expected >= entry.medians.length) return; // character already complete
-    const median = entry.medians[state.expected];
-    const result = matchStroke(poly109, median);
+    const result = matchStroke(poly109, entry.medians, state.expected);
     if (result.ok) {
       state.expected++;
       state.misses = 0;
@@ -1454,6 +1543,7 @@ export function initApp() {
       const why = result.reason === 'direction' ? 'むきをたしかめてね' : 'じゅんばんをたしかめてね';
       setMessage('おっと！' + why, false);
       if (state.misses >= HINT_AFTER_MISSES) overlay.hint(state.expected);
+      if (state.misses >= SKIP_AFTER_MISSES) dom.btnSkip.hidden = false; // escape hatch
     }
   };
 
@@ -1465,13 +1555,18 @@ export function initApp() {
     overlay.clear();
     setMessage('', false);
     dom.btnNext.hidden = true;
+    dom.btnSkip.hidden = true;
   });
   dom.btnCheck.addEventListener('click', () => overlay.reveal());
-  dom.btnNext.addEventListener('click', () => {
+
+  function goNext() {
     state.index++;
     if (state.index >= questions.length) return finish();
     loadQuestion();
-  });
+  }
+  dom.btnNext.addEventListener('click', goNext);
+  dom.btnSkip.addEventListener('click', goNext);
+  dom.btnAgain.addEventListener('click', () => location.reload());
 
   function finish() {
     state.done = true;
@@ -1479,6 +1574,7 @@ export function initApp() {
     dom.progress.textContent = `${questions.length} / ${questions.length}`;
     document.querySelector('.pad').style.display = 'none';
     document.querySelector('.controls').style.display = 'none';
+    dom.btnAgain.hidden = false;
     setMessage('', true);
   }
 
@@ -1501,6 +1597,114 @@ Expected: 例文が総ルビ（漢字の上に読み）＋ 出題字が `〇（�
 ```bash
 git add index.html style.css src/app.js
 git commit -m "feat: 画面と出題フローの結線を追加"
+```
+
+---
+
+## Task 10.5: PWA（ホーム画面追加・オフライン）
+
+**Files:**
+- Create: `manifest.json`, `icon.svg`, `sw.js`
+
+**Interfaces:**
+- Consumes: Task 10 の `index.html`（`link rel=manifest` / `apple-touch-icon` / sw 登録スクリプトは記載済み）
+- Produces: ホーム画面追加で standalone 表示、Service Worker による cache-first オフライン動作（§3.4）
+
+- [ ] **Step 1: `manifest.json` を作成**
+
+```json
+{
+  "name": "漢字ドリル",
+  "short_name": "漢字",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f7f6",
+  "theme_color": "#4caf50",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
+```
+
+- [ ] **Step 2: `icon.svg` を作成**
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#4caf50"/>
+  <text x="256" y="368" font-size="320" text-anchor="middle"
+        font-family="'Hiragino Kaku Gothic ProN','Meiryo',sans-serif" fill="#ffffff">漢</text>
+</svg>
+```
+
+> 注: iOS のホーム画面アイコンは PNG が最も確実。SVG でも動くが、より綺麗なアイコンが必要になったら
+> 180×180 と 512×512 の PNG を追加し `apple-touch-icon` / manifest から参照する。初期版は SVG で足りる。
+
+- [ ] **Step 3: `sw.js`（cache-first Service Worker）を作成**
+
+```javascript
+const CACHE = 'kanji-drill-v1';
+const ASSETS = [
+  './',
+  './index.html',
+  './style.css',
+  './manifest.json',
+  './icon.svg',
+  './data/kanji-data.js',
+  './src/app.js',
+  './src/ruby.js',
+  './src/select.js',
+  './src/judge.js',
+  './src/ink.js',
+  './src/overlay.js',
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+  e.respondWith(
+    caches.match(e.request).then((hit) => {
+      if (hit) return hit;
+      return fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      });
+    })
+  );
+});
+```
+
+> データや src を更新したら `CACHE` の `v1` を上げる（`v2` 等）。古いキャッシュは `activate` で削除される。
+
+- [ ] **Step 4: 構文チェック**
+
+Run: `node --check sw.js`
+Expected: エラーなし（終了コード 0）。`self` は Worker グローバルだが、構文検査のみなので問題ない。
+
+- [ ] **Step 5: 手元サーバで PWA を目視確認**
+
+Run: `python3 -m http.server 8000`（起動済みなら不要）→ ブラウザで `http://localhost:8000/` を開き、DevTools → Application:
+Expected: Manifest に「漢字ドリル」が表示される。Service Workers に `sw.js` が activated & running。オフライン（Network: Offline）にしてリロードしても画面が出る。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add manifest.json icon.svg sw.js
+git commit -m "feat: PWA対応(ホーム画面追加・オフライン)を追加"
 ```
 
 ---
@@ -1597,6 +1801,15 @@ test('model button animates and check button reveals overlay', async ({ page }) 
   await page.click('#btn-check');
   await expect(page.locator('#model path')).not.toHaveCount(0);
 });
+
+test('is installable: manifest link and apple meta are present', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  const capable = await page
+    .locator('meta[name="apple-mobile-web-app-capable"]')
+    .getAttribute('content');
+  expect(capable).toBe('yes');
+});
 ```
 
 > 注: 書き順一致による「大せいかい！」の到達は、字ごとに median 座標へ正確に軌跡を合わせる必要があり E2E では脆い。ストローク一致の判定ロジックは Task 7 の単体テストで担保し、E2E は「レンダリング・パームリジェクション・お手本/重ね」の DOM 動作に絞る。
@@ -1604,7 +1817,7 @@ test('model button animates and check button reveals overlay', async ({ page }) 
 - [ ] **Step 3: E2E を実行**
 
 Run: `npx playwright install chromium && npm run e2e`
-Expected: 3 tests pass。落ちたら該当 DOM の id / クラスを実装と突き合わせる。
+Expected: 4 tests pass（renders / palm rejection / model+check / installable）。落ちたら該当 DOM の id / クラスを実装と突き合わせる。
 
 - [ ] **Step 4: GitHub Pages 用 `.nojekyll` を追加**
 
@@ -1654,7 +1867,8 @@ git commit -m "test: E2E検証とGitHub Pages設定を追加"
 - §3.1 各モジュール責務 → Task 2/6/7/8/9/10。
 - §3.2 変換・差分・検証基準（画数一致・順序・median 妥当性・目視「右」）→ Task 4/5。
 - §3.3 id/grade・Fisher-Yates 抽出・分母＝配列長・追加手順 → Task 3/5/6/10。
-- §4.1 レイアウト・SVG下層+canvas上層 → Task 10。
+- §3.4 技術スタック・依存の線引き・ESM・PWA（manifest/sw/meta）→ Task 1/4 + Task 10（meta/登録）+ Task 10.5。
+- §4.1 レイアウト・SVG下層+canvas上層・DPR 対応 → Task 8（_fit）+ Task 10。
 - §4.2 止めはねはらい重ね → Task 9（reveal）+ Task 10（btn-check）。
 - §4.3 判定要素・2 回ミスでヒント → Task 7 + Task 10。
 - §5 出題フロー・ボタン・記録なし → Task 10。
@@ -1664,4 +1878,4 @@ git commit -m "test: E2E検証とGitHub Pages設定を追加"
 
 **2. Placeholder scan:** コード steps はすべて実コードを記載。TBD/TODO なし。
 
-**3. Type consistency:** `InkPad.onStroke(poly109)` は 109 座標系 `[x,y][]`（Task 8）→ `matchStroke(poly109, median)`（Task 7）で同座標系。`Overlay.setCharacter({strokes, medians})` は `KANJI_DATA` 要素形（Task 5）と一致。`pickQuestions(pool, QUESTION_COUNT)`（Task 10）は Task 6 の署名と一致。`rubyToHtml`（Task 2）を Task 10 で使用、署名一致。
+**3. Type consistency:** `InkPad.onStroke(poly109)` は 109 座標系 `[x,y][]`（Task 8）→ `matchStroke(poly109, entry.medians, state.expected)`（Task 10 呼び出し）で Task 7 の新署名 `matchStroke(drawn, medians, expectedIndex)` と一致（当該字の全画 median を渡す）。`Overlay.setCharacter({strokes, medians})` は `KANJI_DATA` 要素形（Task 5）と一致。`pickQuestions(pool, QUESTION_COUNT)`（Task 10）は Task 6 の署名と一致。`rubyToHtml`（Task 2）を Task 10 で使用、署名一致。`sw.js` の `ASSETS` は実ファイル構成（src/data/manifest/icon）と一致。
