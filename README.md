@@ -11,6 +11,7 @@ iPad + Apple Pencil で使う漢字テスト web アプリ。例文（総ルビ�
 - `npm test` — 単体テスト（node --test）
 - `npm run e2e` — Playwright E2E
 - `npm run convert` — tools/kanji-list.json + KanjiVG SVG から data/kanji-data.js を再生成
+- デプロイ時: `data/` や `src/` を更新したら `sw.js` の `CACHE` 名（`kanji-drill-v1` → `v2` …）を上げる。古いキャッシュは `activate` で削除される。
 
 ランタイムは第三者ライブラリ・CDN を使わない（完全オフライン）。devDependencies は配信物に含まれない。
 

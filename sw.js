@@ -33,8 +33,10 @@ self.addEventListener('fetch', (e) => {
     caches.match(e.request).then((hit) => {
       if (hit) return hit;
       return fetch(e.request).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       });
     })

@@ -73,6 +73,7 @@ export function initApp() {
     if (state.expected >= entry.medians.length) return; // character already complete
     const result = matchStroke(poly109, entry.medians, state.expected);
     if (result.ok) {
+      overlay.clear();
       state.expected++;
       state.misses = 0;
       if (state.expected >= entry.medians.length) {
