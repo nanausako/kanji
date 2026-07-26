@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>漢字ドリル</title>
-  <!-- PWA: home-screen install + standalone (§3.4). Referenced files created in Task 10.5. -->
+  <!-- PWA: home-screen install + standalone -->
   <meta name="theme-color" content="#4caf50" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="漢字ドリル" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon-180.png" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -47,7 +47,7 @@
     initApp();
   </script>
   <script>
-    // Register the Service Worker for offline use (§3.4). File created in Task 10.5.
+    // Register the Service Worker for offline use.
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
     }

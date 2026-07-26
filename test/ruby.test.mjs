@@ -47,3 +47,9 @@ test('rubyToHtml renders and escapes', () => {
 test('a malformed 《 with no closing 》 is treated as literal text', () => {
   assert.deepEqual(parseRuby('本《ほん'), [{ t: 'text', v: '本《ほん' }]);
 });
+
+test('the iteration mark 々 is part of the ruby base', () => {
+  assert.deepEqual(parseRuby('時々《ときどき》'), [
+    { t: 'ruby', base: '時々', rt: 'ときどき' },
+  ]);
+});

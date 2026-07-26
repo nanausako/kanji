@@ -4,7 +4,9 @@
 const PLACEHOLDER = '〇';
 
 function isKanji(ch) {
-  return ch !== PLACEHOLDER && /\p{Script=Han}/u.test(ch);
+  // 々 (iteration mark, e.g. 時々) is Script=Common, not Han, so include it
+  // explicitly so a ruby base like 時々《ときどき》 stays intact.
+  return ch !== PLACEHOLDER && (ch === '々' || /\p{Script=Han}/u.test(ch));
 }
 
 export function parseRuby(text) {

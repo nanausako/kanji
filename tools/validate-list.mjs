@@ -42,6 +42,10 @@ export function validateList(list) {
       const opens = (e.sentence.match(/《/g) || []).length;
       const closes = (e.sentence.match(/》/g) || []).length;
       if (opens !== closes) errors.push(`${where}: unbalanced 《》 in sentence`);
+      // The 〇 blank must be outside ruby: 明日《あ〇た》 would break split('〇').
+      if (/《[^》]*〇[^》]*》/.test(e.sentence)) {
+        errors.push(`${where}: placeholder 〇 must not be inside 《》`);
+      }
     }
   }
   return { ok: errors.length === 0, errors };

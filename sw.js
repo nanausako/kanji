@@ -1,10 +1,13 @@
-const CACHE = 'kanji-drill-v1';
+const CACHE = 'kanji-drill-v2';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './manifest.json',
   './icon.svg',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png',
   './data/kanji-data.js',
   './src/app.js',
   './src/ruby.js',

@@ -47,3 +47,8 @@ test('non-positive strokeCount is rejected', () => {
   const bad = [{ id: '04e00', kanji: '一', grade: 1, reading: 'いち', strokeCount: 0, sentence: '〇' }];
   assert.equal(validateList(bad).ok, false);
 });
+
+test('placeholder 〇 inside ruby 《》 is rejected', () => {
+  const bad = [{ id: '096e8', kanji: '雨', grade: 1, reading: 'あめ', strokeCount: 8, sentence: '明日《あ〇た》はさむい' }];
+  assert.equal(validateList(bad).ok, false);
+});

@@ -20,7 +20,7 @@ export class InkPad {
     canvasEl.addEventListener('pointerdown', (e) => this._down(e));
     canvasEl.addEventListener('pointermove', (e) => this._move(e));
     canvasEl.addEventListener('pointerup', (e) => this._up(e));
-    canvasEl.addEventListener('pointercancel', (e) => this._up(e));
+    canvasEl.addEventListener('pointercancel', (e) => this._cancel(e));
 
     this._fit();
     if (typeof window !== 'undefined') window.addEventListener('resize', () => this._fit());
@@ -72,6 +72,14 @@ export class InkPad {
       this.strokes.push(stroke);
       this.onStroke(stroke.map(([x, y]) => [x, y]));
     }
+    this._render();
+  }
+
+  _cancel(e) {
+    // A cancelled pointer (palm bump, gesture takeover) discards the in-progress
+    // stroke rather than committing a partial line.
+    if (!this.drawing || e.pointerId !== this.drawing.id) return;
+    this.drawing = null;
     this._render();
   }
 
