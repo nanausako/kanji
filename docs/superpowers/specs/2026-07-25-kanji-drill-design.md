@@ -62,7 +62,7 @@ iPad と Apple Pencil で使える漢字テスト web アプリを作る。例�
 
 ## 3. アーキテクチャ
 
-ビルド不要のバニラ HTML/CSS/JS 静的サイト。
+ビルド不要のバニラ HTML/CSS/JS 静的サイト（技術選定の根拠と依存の線引きは §3.4）。
 
 ```
 kanji/
@@ -73,6 +73,8 @@ kanji/
 │   ├── judge.js        # 書き順判定（drawn polyline ↔ 参照 median のマッチ）
 │   └── overlay.js      # お手本アニメーション再生・お手本重ね表示
 ├── style.css           # スタイル
+├── manifest.json       # ホーム画面追加用（§3.4）
+├── sw.js               # cache-first Service Worker（オフライン動作・§3.4）
 ├── data/
 │   ├── kanji-data.js   # 10 字の { kanji, sentence, reading, strokes, medians }
 │   └── NOTICE          # KanjiVG 帰属表示（CC BY-SA 3.0）
@@ -169,6 +171,44 @@ kanji/
 **データ量と分割方針**: 1 字あたり strokes + medians でおよそ 2〜5 KB。小 1 配当 80 字なら
 200〜400 KB 程度で単一ファイルのまま問題ない。**300 字を超えたら**学年別ファイル
 （`data/kanji-g1.js` 等）に分割し、必要な学年だけ読み込む構成に切り替える。
+
+### 3.4 技術スタックと依存方針
+
+| 層 | 選定 | 理由 |
+|---|---|---|
+| ランタイム | 素の **ES Modules**（フレームワークなし） | 下記 |
+| 型 | **JSDoc + `// @ts-check`**（`tsc --noEmit` で検査のみ） | ビルド成果物ゼロのまま型が効く。TypeScript 導入はビルド必須化を招くので採らない |
+| 描画 | SVG（お手本）+ Canvas 2D（筆跡）+ Pointer Events | 追加ライブラリ不要 |
+| データ生成 | Node.js + `svg-path-properties`（devDependency） | median 生成に path 長サンプリングが要る（下記） |
+| テスト | `node:test`（Node 標準）+ Playwright | 追加ランナー不要 |
+| CI/配信 | GitHub Actions → GitHub Pages | |
+
+**フレームワークを入れない根拠**: 保持する状態は「現在の問題 index / 現在の画 index / ミス回数 /
+筆跡」程度しかなく、宣言的 UI の恩恵がほぼない。逆に中核である Canvas 描画と SVG アニメーションは
+命令的操作そのもので、React に載せても全部 `useRef` + `useEffect` に閉じ込めることになり抽象化が
+仕事をしない。§2 の「更新は git push のみ」とも噛み合う。
+
+**依存の線引き**（§2-3 の「CDN 依存なし」の正確な意味）:
+
+- **ランタイム依存はゼロ**。配信物（html/css/js/data）に第三者ライブラリを含めない。
+- **開発時依存は許容**。`devDependencies` は配信物に入らないため、上記方針と矛盾しない。
+  KanjiVG の path から median を等間隔サンプリングするにはブラウザの `getPointAtLength()` 相当が
+  必要だが **Node には存在しない**ため、`svg-path-properties` を使う（自前実装も可能だが車輪の再発明）。
+
+**モジュール形式**: `data/kanji-data.js` はグローバル変数ではなく `export const KANJI_DATA = [...]`
+の ESM とする。`judge.js` 等を `node --test` から `import` して単体テストするための前提条件
+（グローバル前提だとテスト時にダミーのグローバルが要る）。
+
+**ローカル開発**: ES Modules は `file://` では CORS で動かない。`python3 -m http.server` 等の
+静的サーバ経由で開く（GitHub Pages 上では問題ない）。
+
+**PWA（ホーム画面追加とオフライン）**: §2 の「ホーム画面に追加してアプリ風に使う」「完全オフライン」を
+成立させるには以下が要る。**どちらも構成に含める**:
+
+- `manifest.json` ＋ `index.html` の `apple-mobile-web-app-capable` メタタグ
+  → 無いとホーム画面に追加してもスタンドアロン表示にならず、Safari の UI が出たままになる。
+- `sw.js`（cache-first の自前 Service Worker、20 行程度）
+  → 無いとオフライン動作はブラウザキャッシュ任せで保証されない。Workbox 等のツールは不要。
 
 ## 4. 画面と UX
 
